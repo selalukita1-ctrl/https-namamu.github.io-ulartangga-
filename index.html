@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Ular Tangga Couple ❤️</title>
+
+<style>
+body{margin:0;font-family:Arial;background:#f4f4f4;text-align:center}
+h3{margin:6px}
+#wrap{position:relative;width:320px;margin:auto}
+#board{display:grid;grid-template-columns:repeat(10,1fr)}
+.cell{height:32px;border:1px solid #ccc;background:#fff;font-size:10px;position:relative}
+.cell span{position:absolute;top:2px;left:2px}
+.obj{position:absolute;z-index:3;pointer-events:none;transform-origin:0% 50%}
+
+.pion{
+ width:20px;height:20px;
+ position:absolute;z-index:5;
+ display:flex;align-items:center;justify-content:center;
+ font-size:16px;
+ transition:left .2s linear, top .2s linear;
+}
+
+/* ===== DICE ===== */
+#dice{
+ width:60px;height:60px;
+ background:#fff;
+ border-radius:10px;
+ border:2px solid #333;
+ margin:10px auto;
+ display:grid;
+ grid-template-columns:repeat(3,1fr);
+ grid-template-rows:repeat(3,1fr);
+}
+.dot{width:8px;height:8px;background:#000;border-radius:50%;margin:auto;opacity:0}
+.show{opacity:1}
+.dice-roll{animation:spin .3s linear infinite}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+button{padding:8px 14px;margin:6px}
+#turnInfo{font-weight:bold}
+
+/* ===== POPUP ===== */
+#popup{
+ position:absolute;inset:0;
+ background:rgba(0,0,0,.6);
+ display:none;align-items:center;justify-content:center;
+ z-index:50;
+}
+#popupBox{
+ background:#fff;
+ width:85%;max-width:300px;
+ padding:16px;border-radius:12px;
+ position:relative;
+}
+#closePop{
+ position:absolute;top:8px;right:12px;
+ font-size:18px;cursor:pointer;
+}
+#timer{font-weight:bold;margin-top:10px;color:#e91e63}
+</style>
+</head>
+
+<body>
+
+<h3>Ular Tangga Couple ❤️</h3>
+<div id="turnInfo"></div>
+
+<div id="wrap">
+ <div id="board"></div>
+
+ <!-- ULAR -->
+ <img src="snake.svg" id="snake1" class="obj">
+ <img src="snake.svg" id="snake2" class="obj">
+ <img src="snake.svg" id="snake3" class="obj">
+ <img src="snake.svg" id="snake4" class="obj">
+ <img src="snake.svg" id="snake5" class="obj">
+ <img src="snake.svg" id="snake6" class="obj">
+ <img src="snake.svg" id="snake7" class="obj">
+
+ <!-- TANGGA -->
+ <img src="ladder.svg" id="ladder1" class="obj">
+ <img src="ladder.svg" id="ladder2" class="obj">
+ <img src="ladder.svg" id="ladder3" class="obj">
+ <img src="ladder.svg" id="ladder4" class="obj">
+ <img src="ladder.svg" id="ladder5" class="obj">
+ <img src="ladder.svg" id="ladder6" class="obj">
+ <img src="ladder.svg" id="ladder7" class="obj">
+</div>
+
+<!-- DICE -->
+<div id="dice">
+ <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+ <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+ <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+</div>
+<button id="diceBtn" onclick="rollDice()">Lempar Dadu</button>
+
+<!-- AUDIO -->
+<audio id="bgm" src="music.mp3" loop></audio>
+<audio id="diceSound" src="dice.mp3"></audio>
+
+<!-- POPUP -->
+<div id="popup">
+ <div id="popupBox">
+  <div id="closePop" onclick="closePopup()">✖</div>
+  <h3 id="popTitle"></h3>
+  <div id="popText"></div>
+  <button id="startBtn" onclick="startTimer()" style="display:none">Mulai Timer</button>
+  <div id="timer"></div>
+ </div>
+</div>
+
+<script>
+  
+  /* ===== SOUND ENGINE (TAMBAHAN SAJA) ===== */
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioCtx();
+const SOUND_VOL = 0.06;
+
+function playTone(freq, dur, type='square'){
+ const o = audioCtx.createOscillator();
+ const g = audioCtx.createGain();
+ o.type = type;
+ o.frequency.value = freq;
+ g.gain.value = SOUND_VOL;
+ o.connect(g);
+ g.connect(audioCtx.destination);
+ o.start();
+ o.stop(audioCtx.currentTime + dur);
+}
+
+function stepSound(){ playTone(700, 0.05); }
+function ladderSound(){
+ playTone(500, 0.1, 'triangle');
+ setTimeout(()=>playTone(800, 0.12, 'triangle'), 120);
+}
+function snakeSound(){
+ playTone(750, 0.12, 'sawtooth');
+ setTimeout(()=>playTone(300, 0.15, 'sawtooth'), 140);
+}
+  
+/* ===== DICE DOT MAP ===== */
+const dotMap={1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
+const dots=document.querySelectorAll('.dot');
+function showDice(n){
+ dots.forEach(d=>d.classList.remove('show'));
+ dotMap[n].forEach(i=>dots[i].classList.add('show'));
+}
+
+/* ===== BOARD ===== */
+const board=document.getElementById('board');
+let n=100;
+for(let r=0;r<10;r++){
+ let row=[];
+ for(let c=0;c<10;c++)row.push(n--);
+ if(r%2)row.reverse();
+ row.forEach(v=>{
+  const d=document.createElement('div');
+  d.className='cell';
+  d.id='c'+v;
+  d.innerHTML='<span>'+v+'</span>';
+  board.appendChild(d);
+ });
+}
+
+/* ===== PLAYER ===== */
+const wrap=document.getElementById('wrap');
+let players=[
+ {name:'Suami',pos:0,el:null,icon:'🐒'},
+ {name:'Istri',pos:0,el:null,icon:'🐝'}
+];
+let turn=0,lastDice=0,rollCount=0;
+players.forEach(p=>{
+ const d=document.createElement('div');
+ d.className='pion';
+ d.textContent=p.icon;
+ wrap.appendChild(d);
+ p.el=d;
+});
+
+/* ===== PLACE ===== */
+function place(){
+ let count={};
+ players.forEach(p=>{if(p.pos>0)count[p.pos]=(count[p.pos]||0)+1});
+ players.forEach((p,i)=>{
+  if(p.pos===0)return;
+  const c=document.getElementById('c'+p.pos);
+  let ox=-10;
+  if(count[p.pos]>1)ox=i===0?-18:-2;
+  p.el.style.left=c.offsetLeft+c.offsetWidth/2+ox+'px';
+  p.el.style.top=c.offsetTop+c.offsetHeight/2-12+'px';
+ });
+}
+
+/* ===== MAP ===== */
+const ladders={3:18,8:26,20:41,27:54,43:77,50:91,73:92};
+const snakes ={17:6,32:10,49:30,56:38,62:19,87:24,98:75};
+
+/* ===== REWARD & PUNISHMENT (ASLI) ===== */
+let rewardSuami=[
+'Istri memberi oral seks selama 2 menit',
+'Pasanganmu mengesekkan seluruh badannya ke tubuhmu selama 30 detik',
+'Ciuman manja satu menit',
+'Dapat 5 tanda merah ditempat yang kamu mau',
+'Pasanganmu membisikkan kalimat nakal di telingamu',
+'Pelukan hangat dipangkuan sambil telanjang',
+'Pasangan mu menjilati putingmu dengan manja selama 1 menit',
+'Dapat pijatan dari pasangan selama 1 menit',
+'Pasanganmu memainkan penis kamu dengan kaki selama 30 detik',
+'Boleh masukkan penismu ke anus pasanganmu sampai mentok'
+];
+let punishmentSuami=[
+'Jilat vagina pasangan sambil memainkan payudara selama 30 detik',
+'Pijat pasanganmu selama 1 menit',
+'Tutup matamu biarkan pasanganmu melakukan apa saja selama 1 menit',
+'Buat pasanganmu mendesah dalam waktu kurang dari 2 menit',
+'Gesek gesek penis ke vagina selama 1 menit',
+'Hisap payudara pasanganmu sambil memainkan jari di vaginanya selama 1 menit',
+'Suami memeluk istri dari belakang sambil meremas payudara selama 1 menit',
+'Biarkan istri menentukan hukumanmu',
+'Masukkan jarimu ke anus pasanganmu 30 detik',
+'Biarkan pasanganmu menamparmu'
+];
+let rewardIstri=[
+'Pasanganmu memijatmu selama 1 menit',
+'Pelukan hangat sambil telanjang selama 2 menit',
+'Ciuman penuh gairah selama 2 menit',
+'Suami menggendongmu sambil telanjang selama 1 menit',
+'Dapat 5 tanda merah di tempat yang kamu mau',
+'Suamimu memainkan vaginamu dengan jari dan lidahnya bersamaan selama 1 menit',
+'Doggy style selama 2 menit',
+'Pasanganmu mengesekkan seluruh badannya ke tubuhmu selama 30 detik',
+'Bisikan manis yang menggoda dari pasanganmu',
+'Women on top selama 2 menit'
+];
+let punishmentIstri=[
+'Pijat pasanganmu selama 1 menit',
+'Gesek vaginamu ke penis selama 1 menit',
+'Lakukan gaya yang belum pernah dilakukan bersama pasanganmu',
+'Masturbasi di depan pasanganmu selama 1 menit',
+'Masukkan perlahan penis pasanganmu ke dalam anusmu',
+'Berikan oral seks ke pasanganmu selama 1 menit',
+'Cium penuh gairah pasanganmu sambil memainkan penisnya selama 1 menit',
+'Cium seluruh tubuh pasanganmu',
+'Hisap penis pasangan sampai mentok tahan 10 detik',
+'Masukkan jarimu ke anus pasanganmu keluar masuk selama 30 detik'
+];
+const rand=a=>a[Math.floor(Math.random()*a.length)];
+
+/* ===== TIMER ===== */
+function parseSeconds(t){
+ let s=0,m=t.match(/(\d+)\s*menit/),d=t.match(/(\d+)\s*detik/);
+ if(m)s+=m[1]*60;if(d)s+=+d[1];return s;
+}
+let timerInt,popupSeconds=0;
+function showPopup(title,text){
+ popup.style.display='flex';
+ popTitle.textContent=title;
+ popText.textContent=text;
+ popupSeconds=parseSeconds(text);
+ startBtn.style.display=popupSeconds?'inline-block':'none';
+ timer.textContent='';
+}
+function startTimer(){
+ let t=popupSeconds;
+ timer.textContent='⏱ '+t+' detik';
+ clearInterval(timerInt);
+ timerInt=setInterval(()=>{
+  t--;timer.textContent='⏱ '+t+' detik';
+  if(t<=0)clearInterval(timerInt);
+ },1000);
+}
+function closePopup(){popup.style.display='none';clearInterval(timerInt);}
+
+/* ===== TURN ===== */
+function updateTurn(){
+ turnInfo.textContent='🎯 Giliran: '+players[turn].name;
+}
+updateTurn();
+
+/* ===== MOVE (SUPPORT MUNDUR) ===== */
+function moveStep(p, step, dir = 1) {
+
+ // ===== HABIS LANGKAH =====
+ if (step === 0) {
+
+  // JIKA SUDAH ADA PEMENANG
+  if (p.pos === 100) {
+   showPopup(
+    '🏆 PEMENANG!',
+    rand(turn ? rewardIstri : rewardSuami)
+   );
+   document.getElementById('resetBtn').style.display='inline-block';
+   diceBtn.disabled = true;
+   return;
+  }
+
+  // CEK ULAR / TANGGA
+  if (ladders[p.pos]) {
+   p.pos = ladders[p.pos];
+   ladderSound();
+   showPopup(
+    '🪜 NAIK TANGGA',
+    turn ? rand(rewardIstri) : rand(rewardSuami)
+   );
+  }
+  else if (snakes[p.pos]) {
+   p.pos = snakes[p.pos];
+   snakeSound();
+   showPopup(
+    '🐍 TURUN ULAR',
+    turn ? rand(punishmentIstri) : rand(punishmentSuami)
+   );
+  }
+
+  place();
+  if (lastDice !== 6) {
+   turn = (turn + 1) % 2;
+   updateTurn();
+  }
+  diceBtn.disabled = false;
+  return;
+ }
+
+ // ===== PINDAH 1 PETAK =====
+ p.pos += dir;
+ step--;
+ stepSound();
+
+ // SENTUH 100 → BALIK ARAH (LANGSUNG LANJUT SISA)
+ if (p.pos >= 100) {
+  p.pos = 100;
+  place();
+  setTimeout(() => {
+   moveStep(p, step, -1);
+  }, 500);
+  return;
+ }
+
+ // BATAS BAWAH
+ if (p.pos < 1) p.pos = 1;
+
+ place();
+ setTimeout(() => {
+  moveStep(p, step, dir);
+ }, 500);
+}
+
+/* ===== DICE ===== */
+const dice=document.getElementById('dice');
+const diceBtn=document.getElementById('diceBtn');
+const bgm=document.getElementById('bgm');
+const diceSound=document.getElementById('diceSound');
+
+function rollDice(){
+ if(audioCtx.state === 'suspended') audioCtx.resume();
+ bgm.play();
+ diceSound.currentTime=0;
+ diceSound.play();
+ diceBtn.disabled=true;
+ dice.classList.add('dice-roll');
+
+ let spin=0;
+ const spinInt=setInterval(()=>{
+  const r=Math.floor(Math.random()*6)+1;
+  showDice(r);
+  spin++;
+  if(spin>10){
+   clearInterval(spinInt);
+   dice.classList.remove('dice-roll');
+   lastDice=r;
+   rollCount=lastDice===6?rollCount+1:0;
+   setTimeout(()=>moveStep(players[turn],lastDice),1000);
+  }
+ },80);
+}
+
+/* ===== DRAW ULAR & TANGGA (INI KUNCI FIX) ===== */
+function drawObj(id,from,to){
+ const el=document.getElementById(id);
+ const c1=document.getElementById('c'+from);
+ const c2=document.getElementById('c'+to);
+ if(!el||!c1||!c2)return;
+
+ const w=wrap.getBoundingClientRect();
+ const r1=c1.getBoundingClientRect();
+ const r2=c2.getBoundingClientRect();
+
+ // tinggi cell dinamis
+ const cellH = r1.height;
+
+ // offset ke atas (±2,3 petak)
+ const OFFSET_Y = -cellH * 2.3;
+
+ const x1 = r1.left - w.left + r1.width / 2;
+ const y1 = r1.top  - w.top  + r1.height / 2 + OFFSET_Y;
+
+ const x2 = r2.left - w.left + r2.width / 2;
+ const y2 = r2.top  - w.top  + r2.height / 2 + OFFSET_Y;
+
+ const dx = x2 - x1;
+ const dy = y2 - y1;
+ const dist = Math.hypot(dx, dy);
+ const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+ el.style.left = x1 + 'px';
+ el.style.top  = y1 + 'px';
+ el.style.width = dist + 'px';
+ el.style.transform =
+  `rotate(${angle}deg) scaleY(${id.includes('ladder') ? 0.12 : 0.08})`;
+}
+
+/* PANGGIL */
+drawObj('snake1',17,6);
+drawObj('snake2',32,10);
+drawObj('snake3',49,30);
+drawObj('snake4',56,38);
+drawObj('snake5',62,19);
+drawObj('snake6',87,24);
+drawObj('snake7',98,75);
+
+drawObj('ladder1',3,18);
+drawObj('ladder2',8,26);
+drawObj('ladder3',20,41);
+drawObj('ladder4',27,54);
+drawObj('ladder5',43,77);
+drawObj('ladder6',50,91);
+drawObj('ladder7',73,92);
+</script>
+
+</body>
+</html>
